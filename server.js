@@ -14,7 +14,7 @@ app.post("/api/chat", async (req, res) => {
     if (!message) return res.status(400).json({ reply: "Error: No message provided." });
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.3-70b-versatile",
+      model: "llama-3.1-8b-instant",
       messages: [{ role: "user", content: message }],
     });
 
