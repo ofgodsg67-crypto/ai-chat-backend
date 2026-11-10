@@ -112,7 +112,7 @@ RULES:
 - CRITICAL: If the customer provides an email address or asks to be contacted, you MUST execute the 'save_lead' tool immediately.`;
 
     const completion = await groq.chat.completions.create({
-      model: "llama-3.1-8b-instant",
+      model: "openai/gpt-oss-120b",
       messages: [
         { role: "system", content: dynamicSystemPrompt },
         { role: "user", content: message }
