@@ -1,0 +1,12 @@
+{
+  "client_apparel_apex": {
+    "name": "Apex Streetwear Co.",
+    "industry": "E-Commerce Apparel (US)",
+    "botRole": "Clothing Sales & Styling Concierge",
+    "details": "Premium US streetwear brand based in LA. Heavyweight hoodies, oversized graphic tees, and cargo pants. Free express shipping on US orders over $75.",
+    "faqs": "Q: How do your hoodies fit? A: They feature an intentional relaxed/oversized fit. If you prefer a tailored fit, size down!",
+    "salesGoal": "Resolve sizing hesitation, highlight shipping perks ($75+ free shipping), and guide shoppers to checkout.",
+    "ctaLink": "https://apexstreetwear.com/shop",
+    "status": "active"
+  }
+}
