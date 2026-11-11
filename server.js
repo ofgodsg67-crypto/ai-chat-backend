@@ -1,43 +1,65 @@
 const express = require('express');
 const cors = require('cors');
-const fs = require('fs');
-const path = require('path');
+const { Pool } = require('pg');
 const Groq = require('groq-sdk');
 
 const app = express();
 app.use(cors());
 app.use(express.json());
-
 app.use(express.static(__dirname));
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
-function getClientDatabase() {
-  const filePath = path.join(__dirname, 'clients.json');
-  if (!fs.existsSync(filePath)) return {};
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+// Connect to Supabase PostgreSQL database
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false }
+});
+
+async function getClientData(clientId) {
+  try {
+    const result = await pool.query('SELECT * FROM clients WHERE client_id = $1', [clientId]);
+    if (result.rows.length === 0) return null;
+    
+    const row = result.rows[0];
+    return {
+      name: row.name,
+      industry: row.industry,
+      botRole: row.bot_role,
+      details: row.details,
+      faqs: row.faqs,
+      salesGoal: row.sales_goal,
+      ctaLink: row.cta_link,
+      status: row.status,
+      currentUsage: row.current_usage
+    };
+  } catch (err) {
+    console.error("❌ [DB ERROR] Failed to fetch client:", err.message);
+    return null;
+  }
 }
 
-function saveClientDatabase(data) {
-  const filePath = path.join(__dirname, 'clients.json');
-  fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
-}
-
-function getLeadsDatabase() {
-  const filePath = path.join(__dirname, 'leads.json');
-  if (!fs.existsSync(filePath)) return [];
-  return JSON.parse(fs.readFileSync(filePath, 'utf8'));
+async function incrementClientUsage(clientId) {
+  try {
+    await pool.query('UPDATE clients SET current_usage = current_usage + 1 WHERE client_id = $1', [clientId]);
+  } catch (err) {
+    console.error("❌ [DB ERROR] Failed to update usage:", err.message);
+  }
 }
 
 async function saveLeadToDatabase(newLead) {
   console.log(`📥 [SAVING LEAD] Attempting to save lead for ${newLead.email}...`);
 
-  // 1. Save locally
-  const leads = getLeadsDatabase();
-  leads.push(newLead);
-  const filePath = path.join(__dirname, 'leads.json');
-  fs.writeFileSync(filePath, JSON.stringify(leads, null, 2), 'utf8');
-  console.log(`✅ [LEAD SAVED LOCALLY] Client: ${newLead.clientId}`);
+  try {
+    // 1. Save to Supabase
+    await pool.query(
+      'INSERT INTO leads (id, client_id, name, phone, email, notes, timestamp) VALUES ($1, $2, $3, $4, $5, $6, $7)',
+      [newLead.id, newLead.clientId, newLead.name, newLead.phone, newLead.email, newLead.notes, newLead.timestamp]
+    );
+    console.log(`✅ [LEAD SAVED TO SUPABASE] Client: ${newLead.clientId}`);
+  } catch (err) {
+    console.error("❌ [DB ERROR] Failed to save lead to Supabase:", err.message);
+  }
 
   // 2. Instantly push alert to Discord
   const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1569671959963373768/g-YLoXZtZOrT2u4gmBeABZ2BxyIQwmsYIn1B0caVBHaaXbGZQlVI0NoE3WO1vfE4lANm";
@@ -85,15 +107,13 @@ app.post('/api/chat', async (req, res) => {
       return res.status(400).json({ reply: "Error: Missing message or clientId." });
     }
 
-    const clientDatabase = getClientDatabase();
-    const clientData = clientDatabase[clientId];
+    const clientData = await getClientData(clientId);
 
     if (!clientData || clientData.status !== "active") {
       return res.status(403).json({ reply: "This chat widget is inactive or the subscription has expired." });
     }
 
-    clientData.currentUsage = (clientData.currentUsage || 0) + 1;
-    saveClientDatabase(clientDatabase);
+    await incrementClientUsage(clientId);
 
     const dynamicSystemPrompt = `You are an expert AI Sales Concierge for ${clientData.name} (${clientData.industry}).
 
@@ -139,7 +159,6 @@ RULES:
       }
     }
 
-    // Fallback: Hard-code text extraction if email (@) is in message
     if (!leadCaptured && message.includes('@')) {
       console.log("⚡ [FALLBACK TRIGGERED] Extracted email directly from message text.");
       const extractedEmail = message.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/)?.[0];
@@ -179,5 +198,5 @@ RULES:
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log("Multi-Tenant USD AI Backend running on port " + PORT);
+  console.log("Multi-Tenant Cloud AI Backend running on port " + PORT);
 });
