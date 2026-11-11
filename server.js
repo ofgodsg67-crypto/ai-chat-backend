@@ -16,10 +16,30 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false }
 });
 
+const DEFAULT_CLIENT = {
+  name: "Apex Streetwear Co.",
+  industry: "E-Commerce Apparel (US)",
+  botRole: "Clothing Sales & Styling Concierge",
+  details: "Premium US streetwear brand based in LA. Heavyweight hoodies, oversized graphic tees, and cargo pants. Free express shipping on US orders over $75.",
+  faqs: "Q: How do your hoodies fit? A: They feature an intentional relaxed/oversized fit. If you prefer a tailored fit, size down!",
+  salesGoal: "Resolve sizing hesitation, highlight shipping perks ($75+ free shipping), and guide shoppers to checkout.",
+  ctaLink: "https://apexstreetwear.com/shop",
+  status: "active",
+  currentUsage: 0
+};
+
 async function getClientData(clientId) {
+  if (!clientId) {
+    console.warn("⚠️ [DB WARNING] No clientId provided in request. Using default fallback.");
+    return DEFAULT_CLIENT;
+  }
+
   try {
     const result = await pool.query('SELECT * FROM clients WHERE client_id = $1', [clientId]);
-    if (result.rows.length === 0) return null;
+    if (result.rows.length === 0) {
+      console.warn(`⚠️ [DB WARNING] Client ID "${clientId}" not found in Supabase. Using default fallback.`);
+      return DEFAULT_CLIENT;
+    }
     
     const row = result.rows[0];
     return {
@@ -35,11 +55,12 @@ async function getClientData(clientId) {
     };
   } catch (err) {
     console.error("❌ [DB ERROR] Failed to fetch client:", err.message);
-    return null;
+    return DEFAULT_CLIENT; // Fallback safely instead of breaking chat
   }
 }
 
 async function incrementClientUsage(clientId) {
+  if (!clientId) return;
   try {
     await pool.query('UPDATE clients SET current_usage = current_usage + 1 WHERE client_id = $1', [clientId]);
   } catch (err) {
@@ -51,7 +72,6 @@ async function saveLeadToDatabase(newLead) {
   console.log(`📥 [SAVING LEAD] Attempting to save lead for ${newLead.email}...`);
 
   try {
-    // 1. Save to Supabase
     await pool.query(
       'INSERT INTO leads (id, client_id, name, phone, email, notes, timestamp) VALUES ($1, $2, $3, $4, $5, $6, $7)',
       [newLead.id, newLead.clientId, newLead.name, newLead.phone, newLead.email, newLead.notes, newLead.timestamp]
@@ -61,7 +81,6 @@ async function saveLeadToDatabase(newLead) {
     console.error("❌ [DB ERROR] Failed to save lead to Supabase:", err.message);
   }
 
-  // 2. Instantly push alert to Discord
   const DISCORD_WEBHOOK_URL = "https://discord.com/api/webhooks/1569671959963373768/g-YLoXZtZOrT2u4gmBeABZ2BxyIQwmsYIn1B0caVBHaaXbGZQlVI0NoE3WO1vfE4lANm";
 
   try {
@@ -101,19 +120,19 @@ const tools = [
 app.post('/api/chat', async (req, res) => {
   try {
     const { message, clientId } = req.body;
-    console.log(`💬 [CHAT INCOMING] Client: ${clientId} | Message: "${message}"`);
+    console.log(`💬 [CHAT INCOMING] Client: ${clientId || 'None provided'} | Message: "${message}"`);
 
-    if (!message || !clientId) {
-      return res.status(400).json({ reply: "Error: Missing message or clientId." });
+    if (!message) {
+      return res.status(400).json({ reply: "Error: Missing message." });
     }
 
     const clientData = await getClientData(clientId);
 
-    if (!clientData || clientData.status !== "active") {
+    if (clientData.status !== "active") {
       return res.status(403).json({ reply: "This chat widget is inactive or the subscription has expired." });
     }
 
-    await incrementClientUsage(clientId);
+    await incrementClientUsage(clientId || 'client_apparel_apex');
 
     const dynamicSystemPrompt = `You are an expert AI Sales Concierge for ${clientData.name} (${clientData.industry}).
 
@@ -178,7 +197,7 @@ RULES:
     if (leadCaptured) {
       const newLead = {
         id: "lead_" + Date.now(),
-        clientId,
+        clientId: clientId || "client_apparel_apex",
         name: leadArgs.name || "Not provided",
         phone: leadArgs.phone || "Not provided",
         email: leadArgs.email || "Not provided",
