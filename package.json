@@ -1,13 +1,11 @@
-﻿{
+{
   "name": "ai-chat-backend",
   "version": "1.0.0",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
   "dependencies": {
     "cors": "^2.8.5",
-    "express": "^4.19.2",
-    "groq-sdk": "^0.13.0"
+    "express": "^4.18.2",
+    "groq-sdk": "^0.3.0",
+    "pg": "^8.11.3"
   }
 }
